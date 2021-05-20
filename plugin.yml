@@ -1,0 +1,21 @@
+name: ZombieSurvival
+description: "자동화 좀비서바이벌 시스템."
+author: skyneton
+version: 1.0
+softdepend: [EconomySystemPlus, PlayerDataResource]
+
+main: net.mpoisv.survival.ZombieSurvival
+
+commands:
+  ZombieSurvival:
+    description: "좀비서바이벌 명령어"
+    permission: zombiesurvival.*
+    usage: /<command> help
+    aliases: [zombie, survival, 좀비, 서바이벌, 좀비서바이벌]
+  vote:
+    description: "좀비서바이벌 투표"
+    usage: /<command> help
+    aliases: [투표]
+permissions:
+  zombiesurvival.*:
+    default: op
