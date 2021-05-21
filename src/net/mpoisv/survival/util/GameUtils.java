@@ -18,9 +18,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.potion.PotionEffect;
 
-import net.minecraft.server.v1_12_R1.EntityBlaze;
 import net.minecraft.server.v1_12_R1.EntityLiving;
 import net.minecraft.server.v1_12_R1.EntityPigZombie;
+import net.minecraft.server.v1_12_R1.EntitySnowman;
 import net.minecraft.server.v1_12_R1.EntityWitch;
 import net.minecraft.server.v1_12_R1.EntityZombie;
 import net.mpoisv.data.util.YamlUtils;
@@ -28,6 +28,7 @@ import net.mpoisv.survival.game.GameWorkerManager;
 import net.mpoisv.survival.game.GameWorkerManager.DuringGameType;
 import net.mpoisv.survival.game.StayWorker;
 import net.mpoisv.survival.module.Map;
+import net.mpoisv.survival.module.ZombiePlayerData;
 import net.mpoisv.survival.module.ZombieTypeModule;
 
 public class GameUtils {
@@ -36,6 +37,8 @@ public class GameUtils {
 	public static ArrayList<Player> HeroSurvivals = new ArrayList<>();
 	public static HashMap<Player, Integer> Zombies = new HashMap<>();
 	public static ArrayList<Player> HostZombies = new ArrayList<>();
+	
+	public static HashMap<Player, ZombiePlayerData> zombieDatas = new HashMap<>();
 	public static int MAP_INDEX = 0;
 	public static GameWorkerManager worker;
 	
@@ -43,6 +46,7 @@ public class GameUtils {
 	
 	public static boolean start() {
 		if((worker == null || GameWorkerManager.now == DuringGameType.NOT) && MAPS.size() > 0) {
+			zombieDatas.clear();
 			Survivals.clear();
 			HeroSurvivals.clear();
 			Zombies.clear();
@@ -72,6 +76,7 @@ public class GameUtils {
 	
 	@SuppressWarnings("deprecation")
 	public static void setZombie(Player player, boolean host) {
+		if(zombieDatas.containsKey(player)) zombieDatas.remove(player);
 		if(!Zombies.containsKey(player)) Zombies.put(player, 0);
 		if(host && !HostZombies.contains(player)) HostZombies.add(player);
 		if(Survivals.containsKey(player)) Survivals.remove(player);
@@ -80,8 +85,14 @@ public class GameUtils {
 		if(host) {
 			color = "§4";
 			player.sendTitle("당신은 §4숙주§f입니다.", "§3생존자§f를 찾아 감염시키세요!");
+			
+			zombieDatas.put(player, new ZombiePlayerData());
 		}else {
 			color = "§c";
+			ZombiePlayerData data = new ZombiePlayerData();
+			data.deathTime = System.currentTimeMillis();
+
+			zombieDatas.put(player, data);
 		}
 		
 		ItemStack item = new ItemStack(Material.NETHER_STALK);
@@ -129,26 +140,35 @@ public class GameUtils {
 		switch(type) {
 		case DEFAULT:
 			prefix = "[일반] ";
+			player.setMaxHealth(60);
+			player.setHealth(60);
 			break;
 		case HEAVY:
 			prefix = "[헤비] ";
+			player.setMaxHealth(120);
+			player.setHealth(120);
 			ThreadUtils.doBukkitThread(() -> {
 				player.setWalkSpeed(0.12f);
 			});
 			break;
 		case LIGHT:
 			prefix = "[라이트] ";
+			player.setMaxHealth(40);
+			player.setHealth(40);
 			ThreadUtils.doBukkitThread(() -> {
 				player.setWalkSpeed(0.28f);
 			});
 			break;
 		case VOODOO:
 			prefix = "[부두] ";
+			player.setMaxHealth(60);
+			player.setHealth(60);
 			break;
 		}
 		
 		player.setPlayerListName(color+prefix+player.getName());
 		PacketUtils.disguise(player, getZombieEntity(player));
+		player.setFoodLevel(20);
 	}
 	
 	public static EntityLiving getZombieEntity(Player player) {
@@ -160,7 +180,7 @@ public class GameUtils {
 			return new EntityPigZombie(((CraftWorld) player.getWorld()).getHandle());
 		}
 		if(temp.startsWith("[라이트] ")) {
-			return new EntityBlaze(((CraftWorld) player.getWorld()).getHandle());
+			return new EntitySnowman(((CraftWorld) player.getWorld()).getHandle());
 		}
 		if(temp.startsWith("[부두] ")) {
 			return new EntityWitch(((CraftWorld) player.getWorld()).getHandle());
@@ -197,6 +217,7 @@ public class GameUtils {
 			player.setPlayerListName("§b"+player.getName());
 		
 		PacketUtils.disguise(player, ((CraftPlayer) player).getHandle(), "");
+		player.setFoodLevel(13);
 	}
 	
 	@SuppressWarnings("deprecation")
@@ -224,6 +245,16 @@ public class GameUtils {
 		if(Zombies.containsKey(player)) return PlayType.Zombie;
 		if(HeroSurvivals.contains(player)) return PlayType.Hero;
 		return PlayType.Survival;
+	}
+	
+	public static int getCooltime(Player player) {
+		switch(getZombieType(player)) {
+		case DEFAULT: return 8;
+		case HEAVY: return 17;
+		case LIGHT: return 17;
+		case VOODOO: return 20;
+		}
+		return 0;
 	}
 	
 	public static enum PlayType {

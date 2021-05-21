@@ -11,7 +11,7 @@ public class ThreadUtils {
 	private static ExecutorService es = Executors.newFixedThreadPool(1);
 	
 	public static void stop() {
-		es.shutdownNow();
+		es.shutdown();
 		while(!es.isShutdown());
 	}
 	

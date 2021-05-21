@@ -1,18 +1,27 @@
 package net.mpoisv.survival.event;
 
+import java.util.List;
+
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
 import net.minecraft.server.v1_12_R1.EntityLiving;
 import net.mpoisv.survival.ZombieSurvival;
 import net.mpoisv.survival.game.GameWorkerManager;
@@ -33,6 +42,7 @@ public class EventManager implements Listener {
 		GameUtils.bar.addPlayer(event.getPlayer());
 		GameUtils.autoPlay();
 		GameUtils.resetPlayer(event.getPlayer());
+		event.getPlayer().setHealthScale(20);
 		if(InGameWorker.now == null) {
 			event.getPlayer().teleport(ZombieSurvival.lobby);
 		}else {
@@ -102,11 +112,13 @@ public class EventManager implements Listener {
 	@EventHandler
 	public void onRespawn(PlayerRespawnEvent event) {
 		if(GameWorkerManager.now == DuringGameType.IN_GAME && GameUtils.Zombies.containsKey(event.getPlayer())) {
+			event.getPlayer().setNoDamageTicks(0);
 			EntityLiving entity = GameUtils.getZombieEntity(event.getPlayer());
 			if(entity == null) return;
 			ThreadUtils.submit(new DelayUtils(5, () -> {
 				if(GameWorkerManager.now == DuringGameType.IN_GAME)
 					PacketUtils.disguise(event.getPlayer(), entity);
+				else GameUtils.resetPlayer(event.getPlayer());
 			}));
 		}
 	}
@@ -119,6 +131,12 @@ public class EventManager implements Listener {
 		Player attacker = (Player) event.getDamager();
 		
 		if(GameWorkerManager.now == DuringGameType.IN_GAME && GameUtils.Zombies.containsKey(attacker)) {
+			long godTime = System.currentTimeMillis() - GameUtils.zombieDatas.get(attacker).deathTime;
+			if(godTime < 1500) {
+				attacker.sendMessage("§c좀비로 감염후 §n"+String.format("%.2d", (double)godTime/1000) +"초§c후 타격이 가능합니다.");
+				event.setCancelled(true);
+				return;
+			}
 			if(attacker.getItemInHand().getType() != Material.NETHER_STALK) return;
 			event.setDamage(victim.getMaxHealth() + 1);
 		}
@@ -127,5 +145,52 @@ public class EventManager implements Listener {
 	@EventHandler
 	public void onFoodChange(FoodLevelChangeEvent event) {
 		event.setCancelled(true);
+	}
+	
+	@EventHandler
+	public void onInteract(PlayerInteractEvent event) {
+		if(!(event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) || event.getItem() == null) return;
+		if(GameWorkerManager.now == DuringGameType.IN_GAME && GameUtils.Zombies.containsKey(event.getPlayer())) {
+			if(event.getItem().getType() != Material.NETHER_STALK) return;
+			long time = GameUtils.getCooltime(event.getPlayer()) * 1000 - (System.currentTimeMillis() - GameUtils.zombieDatas.get(event.getPlayer()).skillTime);
+			if(time > 0) {
+				event.getPlayer().sendMessage("§e스킬 쿨타임 중... §f§n"+String.format("%.2f", (double)time/1000) +"초§f 후 재사용이 가능합니다.");
+				return;
+			}
+			event.getPlayer().sendMessage("§e스킬§f을 사용하였습니다.");
+			
+			GameUtils.zombieDatas.get(event.getPlayer()).skillTime = System.currentTimeMillis();
+			switch(GameUtils.getZombieType(event.getPlayer())) {
+			case DEFAULT: {
+				event.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 7 * 20, 3, false, false));
+				break;
+			}
+			case HEAVY: {
+				event.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.SLOW, 5 * 20, 200, false, false));
+				event.getPlayer().setNoDamageTicks(5 * 20);
+				break;
+			}
+			case LIGHT: {
+				event.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.JUMP, 5 * 20, 2, true, true));
+				event.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, 5 * 20, 0, true, true));
+				break;
+			}
+			case VOODOO: {
+				List<Entity> entities = event.getPlayer().getNearbyEntities(5, 5, 5);
+				event.getPlayer().addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 4 * 20, 2, false, false));
+				for(Entity entity : entities) {
+					if(entity instanceof Player) {
+						Player temp = (Player) entity;
+						if(GameUtils.Zombies.containsKey(temp)) {
+							temp.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 4 * 20, 1, false, false));
+							
+							temp.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText("§6부두술사§7에 의해 §c재생§7효과를 받습니다."));
+						}
+					}
+				}
+				break;
+			}
+			}
+		}
 	}
 }
